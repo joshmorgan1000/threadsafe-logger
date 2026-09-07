@@ -322,7 +322,7 @@ void GlobalLoggingContext::log_message(Logger::LogLevel level, const std::string
     }
     std::stringstream linebumps;
     if (out_ptr_ != nullptr) {
-        std::unique_lock plock(GlobalLoggingContext::instance().progress_mutex());
+        std::lock_guard<std::mutex> plock(GlobalLoggingContext::instance().progress_mutex());
         auto& bars = GlobalLoggingContext::instance().progress_bars();
         size_t n_bars = bars.size();
         if (n_bars > 0) {
@@ -478,7 +478,7 @@ bool LogoAnimation::advance_frame(uint64_t epoch_ms) {
         const int p2_want = ramp(P2_START_MS, P2_END_MS, P2_DELTA);
         const int p3_want = ramp(P3_START_MS, P3_END_MS, P3_DELTA);
         {
-            std::lock_guard<std::shared_mutex> lock(braille_points_mutex_);
+            std::unique_lock<std::shared_mutex> lock(braille_points_mutex_);
             while (static_cast<int>(braille_points_.size()) < p1_want) {
                 double r =
                     std::uniform_real_distribution<>(3.0, 10.0)(spawn_rng);
