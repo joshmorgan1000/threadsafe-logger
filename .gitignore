@@ -34,6 +34,3 @@
 
 # Build directory
 build/
-
-# Local editor settings
-.vscode/

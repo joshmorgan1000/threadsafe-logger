@@ -4,6 +4,8 @@ project(logging
     DESCRIPTION "Consolidated C++ logging utilities"
     LANGUAGES CXX
 )
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # --- Options ---------------------------------------------------------------
 option(LOGGING_BUILD_TESTS "Build the logging library's tests" OFF)
 set(LOGGING_LOG_LEVEL 0 CACHE STRING "Compile-time minimum log level (0=trace, 5=raw)")
@@ -21,7 +23,7 @@ target_include_directories(logging
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
 )
-target_compile_features(logging PUBLIC cxx_std_17)
+target_compile_features(logging PUBLIC cxx_std_20)
 target_compile_definitions(logging
     PUBLIC
         LOGGING_LOG_LEVEL=${LOGGING_LOG_LEVEL}
