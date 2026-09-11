@@ -52,7 +52,5 @@ install(EXPORT loggingTargets
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/logging
 )
 # --- Tests -----------------------------------------------------------------
-if(LOGGING_BUILD_TESTS)
-    enable_testing()
-    add_subdirectory(tests)
-endif()
+enable_testing()
+add_subdirectory(tests)

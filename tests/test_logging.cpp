@@ -3,6 +3,7 @@
  * @brief Tests logging overloads, macros, formatting, and serialized concurrent output.
  */
 #include <logging.hpp>
+#include <loggingutils.hpp>
 #include <iostream>
 #include <set>
 #include <sstream>
@@ -27,6 +28,7 @@ private:
     std::ostream* original_stdout_;
     std::ostream* original_additional_;
     bool original_json_;
+    bool original_colored_;
     threadsafe_logger::Logger::LogLevel original_level_;
     std::string original_component_;
     std::string original_instance_name_;
@@ -38,6 +40,9 @@ public:
         original_level_(threadsafe_logger::Logger::level()),
         original_component_(threadsafe_logger::component()),
         original_instance_name_(threadsafe_logger::instance_name()) {
+        threadsafe_logger::logging::GlobalLoggingContext::instance();
+        original_colored_ =
+            threadsafe_logger::logging::GlobalLoggingContext::colored_output().exchange(false);
         threadsafe_logger::Logger::level() = threadsafe_logger::Logger::LogLevel::TRACE;
         threadsafe_logger::component().clear();
         threadsafe_logger::instance_name().clear();
@@ -46,6 +51,7 @@ public:
         threadsafe_logger::stdout_stream().store(original_stdout_);
         threadsafe_logger::additional_stream().store(original_additional_);
         threadsafe_logger::log_format_json().store(original_json_);
+        threadsafe_logger::logging::GlobalLoggingContext::colored_output().store(original_colored_);
         threadsafe_logger::Logger::level() = original_level_;
         threadsafe_logger::component() = original_component_;
         threadsafe_logger::instance_name() = original_instance_name_;

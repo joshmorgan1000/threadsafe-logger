@@ -261,7 +261,6 @@ inline static const std::unordered_map<TerminalColors, std::unordered_map<Termin
         { TerminalColors::NONE_SPECIFIED, TerminalColors::DARK_GRAY }, { TerminalColors::DEFAULT, TerminalColors::DARK_GRAY }, { TerminalColors::DARK_RED, TerminalColors::DARK_GRAY }, { TerminalColors::RED, TerminalColors::DARK_GRAY }, { TerminalColors::BRIGHT_RED, TerminalColors::DARK_GRAY }, { TerminalColors::DARK_ORANGE, TerminalColors::DARK_GRAY }, { TerminalColors::ORANGE, TerminalColors::DARK_GRAY }, { TerminalColors::BRIGHT_ORANGE, TerminalColors::DARK_GRAY }, { TerminalColors::DARK_YELLOW, TerminalColors::DARK_GRAY }, { TerminalColors::YELLOW, TerminalColors::DARK_GRAY }, { TerminalColors::BRIGHT_YELLOW, TerminalColors::DARK_GRAY }, { TerminalColors::DARK_GREEN, TerminalColors::DARK_GRAY }, { TerminalColors::GREEN, TerminalColors::DARK_GRAY }, { TerminalColors::BRIGHT_GREEN, TerminalColors::DARK_GRAY }, { TerminalColors::DARK_CYAN, TerminalColors::DARK_GRAY }, { TerminalColors::CYAN, TerminalColors::DARK_GRAY }, { TerminalColors::BRIGHT_CYAN, TerminalColors::DARK_GRAY }, { TerminalColors::DARK_BLUE, TerminalColors::DARK_GRAY }, { TerminalColors::BLUE, TerminalColors::DARK_GRAY }, { TerminalColors::BRIGHT_BLUE, TerminalColors::DARK_GRAY }, { TerminalColors::DARK_MAGENTA, TerminalColors::DARK_GRAY }, { TerminalColors::MAGENTA, TerminalColors::DARK_GRAY }, { TerminalColors::BRIGHT_MAGENTA, TerminalColors::DARK_GRAY }, { TerminalColors::DARK_PURPLE, TerminalColors::DARK_GRAY }, { TerminalColors::PURPLE, TerminalColors::DARK_GRAY }, { TerminalColors::BRIGHT_PURPLE, TerminalColors::DARK_GRAY }, { TerminalColors::BLACK, TerminalColors::GREY }, { TerminalColors::GREY, TerminalColors::GREY }, { TerminalColors::WHITE, TerminalColors::WHITE }, { TerminalColors::DARK_GRAY, TerminalColors::DARK_GRAY }, { TerminalColors::TRANSPARENT, TerminalColors::GREY }
     } }
 };
-
 inline void encode_utf8(uint32_t cp, std::ostream& out) {
     if (cp < 0x80u) {
         out.put(static_cast<char>(cp));
@@ -2065,10 +2064,41 @@ private:
     std::atomic<std::ostream*> addtl_log_;
     GlobalLoggingContext() : is_stdout_a_tty(stdout_is_tty()), is_stderr_a_tty(stderr_is_tty()),
         stdout_(&std::cout), stderr_(&std::cerr), addtl_log_(nullptr) {
-        colored_output().store(enable_ansi_colors(), std::memory_order_release);
-        const char* dark_grey  = enable_ansi_colors() ? "\033[90m" : "";
-        const char* reset = enable_ansi_colors() ? "\033[0m" : "";
-        std::cout << dark_grey << "_\\\"||\\/||\'|_[-|_()[,[,[-|2" << reset << std::endl;
+        const bool use_colors = enable_ansi_colors();
+        colored_output().store(use_colors, std::memory_order_release);
+        constexpr char32_t banner[] = U"𝔰𝔦𝔪𝔭𝔩𝔢 𝔱𝔥𝔯𝔢𝔞𝔡𝔰𝔞𝔣𝔢 𝔩𝔬𝔤𝔤𝔢𝔯";
+        constexpr size_t last_character = sizeof(banner) / sizeof(banner[0]) - 2;
+        std::ostringstream banner_output;
+        const auto append_braille = [&](bool reverse) {
+            constexpr char32_t dots[] = U"⠂⠒⠶⣶⣿";
+            constexpr size_t last_dot = sizeof(dots) / sizeof(dots[0]) - 2;
+            for (size_t dot = 0; dot <= last_dot; ++dot) {
+                const size_t shade = reverse ? last_dot - dot : dot;
+                if (use_colors) {
+                    const size_t gray = 20 * shade / last_dot;
+                    const size_t blue = 26 * shade / last_dot;
+                    banner_output << "\033[38;2;" << gray << ';' << gray << ';' << blue << 'm';
+                }
+                encode_utf8(dots[shade], banner_output);
+            }
+        };
+        append_braille(false);
+        banner_output << ' ';
+        for (size_t character = 0; character <= last_character; ++character) {
+            if (use_colors) {
+                const double position = 1.0 - std::abs(2.0 * character / last_character - 1.0);
+                const double blend = position * position * (3.0 - 2.0 * position);
+                const int red = static_cast<int>(20.0 - 19.0 * blend);
+                const int green = static_cast<int>(20.0 - 17.0 * blend);
+                const int blue = static_cast<int>(26.0 + 194.0 * blend);
+                banner_output << "\033[38;2;" << red << ';' << green << ';' << blue << 'm';
+            }
+            encode_utf8(banner[character], banner_output);
+        }
+        banner_output << ' ';
+        append_braille(true);
+        if (use_colors) banner_output << "\033[0m";
+        std::cout << banner_output.str() << std::endl;
     }
 public:
     GlobalLoggingContext(const GlobalLoggingContext&) = delete;
