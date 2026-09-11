@@ -1314,7 +1314,15 @@ private:
             return a.epoch_ms > b.epoch_ms;
         }
     };
-    std::vector<std::pair<TerminalPosition, std::unique_ptr<TerminalScreen>>> windows_;
+    /// A composited window plus an optional size policy. When `sizer` is set
+    /// the compositor re-evaluates it every frame and resizes the window to
+    /// follow terminal resize events.
+    struct WindowSlot {
+        TerminalPosition pos;
+        std::unique_ptr<TerminalScreen> screen;
+        std::function<TerminalSize()> sizer;
+    };
+    std::vector<WindowSlot> windows_;
     std::mutex windows_mutex_;
     std::atomic<TerminalScreen*> current_screen_{nullptr};
     std::priority_queue<ScheduledTask,
@@ -1325,6 +1333,9 @@ private:
     std::atomic<bool> running_{true};
     std::thread worker_thread_;
     static constexpr uint64_t FRAME_INTERVAL_MS = 33;
+    /// Idle wake-up cadence so terminal resizes are picked up even when no
+    /// sprite is animating (pure polling - portable, no signals involved).
+    static constexpr uint64_t RESIZE_POLL_MS = 250;
     uint64_t last_paint_ms_ = 0;
     TerminalSize terminal_size() {
         return TerminalSize(get_terminal_width(), get_terminal_height());
@@ -1418,7 +1429,17 @@ private:
                 next_screen->epoch_ms = epoch_ms;
                 {
                     std::lock_guard<std::mutex> lock(windows_mutex_);
-                    for (auto& [pos, win] : windows_) {
+                    for (auto& win_slot : windows_) {
+                        if (win_slot.sizer) {
+                            const TerminalSize want = win_slot.sizer();
+                            if (want != win_slot.screen->size) {
+                                win_slot.screen->resize(
+                                    static_cast<int>(want.width),
+                                    static_cast<int>(want.height));
+                            }
+                        }
+                        auto& win = win_slot.screen;
+                        auto& pos = win_slot.pos;
                         win->epoch_ms = epoch_ms;
                         const bool win_active = win->draw();
                         any_active = any_active || win_active;
@@ -1432,9 +1453,9 @@ private:
                 last_paint_ms_ = epoch_ms;
             } else {
                 std::lock_guard<std::mutex> lock(windows_mutex_);
-                for (auto& [pos, win] : windows_) {
-                    (void)pos;
-                    if (win->draw()) {
+                for (auto& win_slot : windows_) {
+                    (void)win_slot.pos;
+                    if (win_slot.screen->draw()) {
                         any_active = true;
                     }
                 }
@@ -1443,26 +1464,20 @@ private:
             if (!running_.load(std::memory_order_acquire)) {
                 break;
             }
-            uint64_t next_wake_ms = std::numeric_limits<uint64_t>::max();
+            uint64_t next_wake_ms = now_ms() + RESIZE_POLL_MS;
             if (!tasks_.empty()) {
-                next_wake_ms = std::min(next_wake_ms, tasks_.top().epoch_ms);
+                next_wake_ms = std::min(
+                    next_wake_ms, tasks_.top().epoch_ms);
             }
             if (any_active) {
                 next_wake_ms = std::min(
                     next_wake_ms, last_paint_ms_ + FRAME_INTERVAL_MS);
             }
-            if (next_wake_ms == std::numeric_limits<uint64_t>::max()) {
-                tasks_cv_.wait(lock, [this] {
-                    return !running_.load(std::memory_order_acquire)
-                        || !tasks_.empty();
-                });
-            } else {
-                const uint64_t t = now_ms();
-                if (next_wake_ms > t) {
-                    tasks_cv_.wait_for(
-                        lock,
-                        std::chrono::milliseconds(next_wake_ms - t));
-                }
+            const uint64_t t = now_ms();
+            if (next_wake_ms > t) {
+                tasks_cv_.wait_for(
+                    lock,
+                    std::chrono::milliseconds(next_wake_ms - t));
             }
         }
     }
@@ -1543,7 +1558,24 @@ public:
         TerminalScreen* raw = screen.get();
         {
             std::lock_guard<std::mutex> lock(windows_mutex_);
-            windows_.emplace_back(pos, std::move(screen));
+            windows_.push_back(WindowSlot{
+                pos, std::move(screen), std::function<TerminalSize()>()});
+        }
+        poke();
+        return raw;
+    }
+    /// Adds a window that tracks the terminal size through `sizer`; the
+    /// compositor resizes the window whenever the sizer's answer changes.
+    TerminalScreen* add_window(
+        TerminalPosition pos,
+        std::unique_ptr<TerminalScreen>&& screen,
+        std::function<TerminalSize()> sizer
+    ) {
+        TerminalScreen* raw = screen.get();
+        {
+            std::lock_guard<std::mutex> lock(windows_mutex_);
+            windows_.push_back(WindowSlot{pos, std::move(screen),
+                std::move(sizer)});
         }
         poke();
         return raw;
@@ -1558,14 +1590,18 @@ public:
         bar->position().column = 0.0;
         bar->position().row = 0.0;
         add_window(TerminalPosition(0.0,
-            static_cast<double>(top_row)), std::move(screen));
+            static_cast<double>(top_row)), std::move(screen),
+            [top_row]() -> TerminalSize {
+                return TerminalSize(
+                    std::max(1, get_terminal_width()), 1);
+            });
         return bar;
     }
     void remove_window(TerminalScreen* handle) {
         {
             std::lock_guard<std::mutex> lock(windows_mutex_);
             for (auto it = windows_.begin(); it != windows_.end(); ++it) {
-                if (it->second.get() == handle) {
+                if (it->screen.get() == handle) {
                     windows_.erase(it);
                     break;
                 }
@@ -1848,8 +1884,16 @@ public:
         const TerminalSize inner = screen->interior_size();
         LogMessageQueueSprite* log = screen->add_sprite<LogMessageQueueSprite>(
             TerminalPosition(0.0, 0.0), inner);
+        /// The sprite follows the window's interior so log lines rewrap when
+        /// the terminal (and with it the window) is resized.
+        log->bind_parent(screen.get());
         add_window(TerminalPosition(0.0,
-            static_cast<double>(top_row)), std::move(screen));
+            static_cast<double>(top_row)), std::move(screen),
+            [top_row]() -> TerminalSize {
+                return TerminalSize(
+                    std::max(2, get_terminal_width() - 1),
+                    std::max(2, get_terminal_height() - top_row));
+            });
         return log;
     }
 };

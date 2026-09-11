@@ -781,7 +781,11 @@ LogoAnimation* Terminal::add_logo_window(int top_row, int pad_rows) {
     auto screen = std::make_unique<TerminalScreen>(w, h);
     LogoAnimation* logo = screen->add_sprite<LogoAnimation>();
     add_window(TerminalPosition(0.0,
-        static_cast<double>(top_row)), std::move(screen));
+        static_cast<double>(top_row)), std::move(screen),
+        [top_row, h]() -> TerminalSize {
+            return TerminalSize(
+                std::max(1, get_terminal_width()), h);
+        });
     return logo;
 }
 /** --------------------------------------------------------------------------------------------------------- Terminal Screen Draw
@@ -827,11 +831,12 @@ bool TerminalScreen::draw() {
 bool Terminal::LogMessageQueueSprite::advance_frame(uint64_t epoch_ms) {
     bool resized = false;
     if (parent_ != nullptr) {
+        const TerminalSize interior = parent_->interior_size();
         const TerminalSize want(
-            static_cast<int>(parent_->size.width)
-                - parent_margin_right_,
-            static_cast<int>(parent_->size.height)
-                - parent_margin_bottom_);
+            std::max(0, static_cast<int>(interior.width)
+                - parent_margin_right_),
+            std::max(0, static_cast<int>(interior.height)
+                - parent_margin_bottom_));
         if (want.width != size_.width || want.height != size_.height) {
             size_ = want;
             delete[] chars_;
