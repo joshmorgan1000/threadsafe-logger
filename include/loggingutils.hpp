@@ -2119,8 +2119,8 @@ private:
             for (size_t dot = 0; dot <= last_dot; ++dot) {
                 const size_t shade = reverse ? last_dot - dot : dot;
                 if (use_colors) {
-                    const size_t gray = 20 * shade / last_dot;
-                    const size_t blue = 26 * shade / last_dot;
+                    const size_t gray = 32 * shade / last_dot;
+                    const size_t blue = 40 * shade / last_dot;
                     banner_output << "\033[38;2;" << gray << ';' << gray << ';' << blue << 'm';
                 }
                 encode_utf8(dots[shade], banner_output);
@@ -2132,9 +2132,9 @@ private:
             if (use_colors) {
                 const double position = 1.0 - std::abs(2.0 * character / last_character - 1.0);
                 const double blend = position * position * (3.0 - 2.0 * position);
-                const int red = static_cast<int>(20.0 - 19.0 * blend);
-                const int green = static_cast<int>(20.0 - 17.0 * blend);
-                const int blue = static_cast<int>(26.0 + 194.0 * blend);
+                const int red = static_cast<int>(32.0 - 24.0 * blend);
+                const int green = static_cast<int>(32.0 - 12.0 * blend);
+                const int blue = static_cast<int>(40.0 + 190.0 * blend);
                 banner_output << "\033[38;2;" << red << ';' << green << ';' << blue << 'm';
             }
             encode_utf8(banner[character], banner_output);
