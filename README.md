@@ -1,5 +1,5 @@
 ```text
-_\"||\/||'|_[-|_()[,[,[-|2
+⠂⠒⠶⣶⣿ 𝔰𝔦𝔪𝔭𝔩𝔢 𝔱𝔥𝔯𝔢𝔞𝔡𝔰𝔞𝔣𝔢 𝔩𝔬𝔤𝔤𝔢𝔯 ⣿⣶⠶⠒⠂
 ```
 
 A simple thread-safe C++17 logging library with compile-time log levels, stream-style macros, structured JSON output,
