@@ -247,6 +247,7 @@ void GlobalLoggingContext::log_message(Logger::LogLevel level, const std::string
         oss << "threadsafe_logger:" << (level == Logger::LogLevel::ERROR ? "error" :
             (level == Logger::LogLevel::WARN ? "warn" : (level == Logger::LogLevel::INFO ? "info" :
             (level == Logger::LogLevel::DEBUG ? "debug" : "trace")))) << ": " << message << "\n";
+        oss << GlobalLoggingContext::get_timestamp() << " ";
         GlobalLoggingContext::stdout_lock();
         std::cout << oss.str();
         std::cout.flush();
