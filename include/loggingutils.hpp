@@ -1301,7 +1301,6 @@ struct TerminalScreen {
     }
     bool draw();
 };
-class LogoAnimation;
 class Terminal {
 public:
     struct ScheduledTask {
@@ -1609,7 +1608,6 @@ public:
         }
         poke();
     }
-    LogoAnimation* add_logo_window(int top_row, int pad_rows = 1);
     static void draw_sprite(
         SpriteBase* sprite,
         TerminalScreen* screen,
@@ -1903,187 +1901,6 @@ inline void poke_compositor() {
 inline void schedule_wake(uint64_t epoch_ms) {
     Terminal::instance().schedule(epoch_ms);
 }
-class LogoAnimation : public SpriteBase {
-public:
-    TerminalPosition position_{0.0, 0.0};
-    uint32_t* chars = nullptr;
-    TerminalColors* colors = nullptr;
-    int last_sw_ = 0;
-    static constexpr int INTRO_ROWS = 7;
-    std::atomic<int64_t> finale_start_ms_{0};
-    int64_t logo_animation_time_ = 0;
-    std::vector<BraillePoint> braille_points_;
-    std::shared_mutex braille_points_mutex_;
-    static inline const std::vector<TerminalColors> PALETTE_ = {
-        TerminalColors::DARK_MAGENTA,
-        TerminalColors::DARK_GRAY,
-        TerminalColors::DARK_GRAY,
-        TerminalColors::DARK_BLUE,
-        TerminalColors::DARK_BLUE,
-        TerminalColors::DARK_BLUE,
-        TerminalColors::DARK_BLUE,
-        TerminalColors::DARK_PURPLE,
-        TerminalColors::DARK_BLUE,
-        TerminalColors::DARK_BLUE,
-        TerminalColors::DARK_PURPLE,
-        TerminalColors::DARK_CYAN,
-        TerminalColors::DARK_PURPLE,
-        TerminalColors::DARK_CYAN,
-        TerminalColors::BLUE,
-        TerminalColors::BLUE,
-        TerminalColors::PURPLE
-    };
-    /// @brief Total wall-clock duration of the intro animation, in ms.
-    static constexpr uint64_t INTRO_DURATION_MS = 17000;
-    struct Logo {
-        TerminalPosition position;
-        std::vector<BraillePoint::CombinedPoint> points;
-        std::unordered_set<size_t> white_point_indices;
-        std::atomic<bool> all_white{false};
-        double render_col_offset = 0;
-        double render_row_offset = 0;
-        Logo() {
-            TerminalScreen screen = TerminalScreen();
-            (void)screen;  // size fetched again below; kept for symmetry
-            std::vector<std::vector<std::array<BraillePoint::CombinedPoint, 2>>> text_ =
-                BrailleSprite::get_text("nebula", TerminalColors::TRANSPARENT);
-            size_t total_cols = 0;
-            for (const auto& letter : text_) total_cols += letter.size();
-            int screen_w = get_terminal_width();
-            constexpr int render_h = LogoAnimation::INTRO_ROWS;
-            (void)render_h;
-            render_col_offset = -22.0;
-            render_row_offset = -4.0;
-            constexpr int CENTER_NUDGE_CHARS = -4;
-            const double target_left_char =
-                (static_cast<double>(screen_w)
-                - static_cast<double>(total_cols)) / 2.0
-                + static_cast<double>(CENTER_NUDGE_CHARS);
-            position = TerminalPosition(
-                2.0 * target_left_char - render_col_offset,
-                12.0);
-            for (size_t row = 0; row < 2; row++) {
-                for (size_t i = 0; i < text_.size(); ++i) {
-                    for (size_t j = 0; j < text_[i].size(); ++j) {
-                        points.push_back(text_[i][j][row]);
-                    }
-                }
-            }
-        }
-        void hitbox(
-            BraillePoint::CombinedPoint* screen,
-            const std::vector<TerminalColors>& palette,
-            int window_lo,
-            int window_hi,
-            std::mt19937& rng,
-            TerminalColors override_color = TerminalColors::NONE_SPECIFIED
-        ) {
-            const int screen_w = get_terminal_width();
-            const int screen_h = LogoAnimation::INTRO_ROWS;
-            const int w = width();
-            const int top_col = static_cast<int>(
-                std::floor((position.column + render_col_offset) / 2.0));
-            const int top_row = static_cast<int>(
-                std::floor((position.row + render_row_offset) / 4.0));
-            for (int i = 0; i < w; ++i) {
-                const int col = top_col + i;
-                if (col < 0 || col >= screen_w) {
-                    continue;
-                }
-                for (int j = 0; j < 2; ++j) {
-                    const int row = top_row + j;
-                    if (row < 0 || row >= screen_h) {
-                        continue;
-                    }
-                    auto pt = &points[static_cast<size_t>(j) * static_cast<size_t>(w) + i];
-                    if (pt->combined_value == 0) {
-                        continue;
-                    }
-                    auto scpt = &screen[static_cast<size_t>(row) * static_cast<size_t>(screen_w) + col];
-                    scpt->combined_value = pt->combined_value;
-                    if (override_color != TerminalColors::NONE_SPECIFIED) {
-                        scpt->color = override_color;
-                    } else {
-                        std::uniform_int_distribution<int> pick(window_lo, window_hi);
-                        scpt->color = palette[static_cast<size_t>(pick(rng))];
-                    }
-                }
-            }
-        }
-        int width() const {
-            return points.size() / 2;
-        }
-        void draw_frame(
-            BraillePoint::CombinedPoint* screen,
-            TerminalColors frame_color,
-            int start_col,
-            int rule_width
-        ) {
-            const int screen_w = get_terminal_width();
-            const int screen_h = LogoAnimation::INTRO_ROWS;
-            const int top_row = static_cast<int>(std::floor(
-                (position.row + render_row_offset) / 4.0));
-            const int upper_row = top_row - 1;   // one row above the logo
-            const int lower_row = top_row + 2;   // one row below the logo
-            for (int i = 0; i < rule_width; ++i) {
-                const int col = start_col + i;
-                if (col < 0 || col >= screen_w) {
-                    continue;
-                }
-                if (upper_row >= 0 && upper_row < screen_h) {
-                    auto scpt = &screen[static_cast<size_t>(upper_row)
-                        * static_cast<size_t>(screen_w) + static_cast<size_t>(col)];
-                    scpt->char_instead = '-';
-                    scpt->color = frame_color;
-                }
-                if (lower_row >= 0 && lower_row < screen_h) {
-                    auto scpt = &screen[static_cast<size_t>(lower_row)
-                        * static_cast<size_t>(screen_w) + static_cast<size_t>(col)];
-                    scpt->char_instead = '-';
-                    scpt->color = frame_color;
-                }
-            }
-        }
-    } logo_;
-    LogoAnimation() {}
-    TerminalSize get_size() const override { return TerminalSize(get_terminal_width(), INTRO_ROWS); }
-    TerminalPosition& position() override { return position_; }
-    uint32_t* get_buffer() const override { return chars; }
-    TerminalColors* get_colors() const override { return colors; }
-    bool advance_frame(uint64_t epoch_ms) override;
-    void spawn_particle(uint64_t epoch_ms, double r, double tilt, double tilt_axis, double base_speed, TerminalColors color, std::mt19937& gen );
-    void trigger_finale() {
-        const int64_t now_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()
-            ).count();
-        int64_t expected = 0;
-        finale_start_ms_.compare_exchange_strong(
-            expected, now_ms, std::memory_order_acq_rel);
-    }
-    bool is_complete() const {
-        if (logo_animation_time_ == 0) {
-            return false;
-        }
-        const int64_t finale_start =
-            finale_start_ms_.load(std::memory_order_acquire);
-        if (finale_start == 0) {
-            return false;
-        }
-        const int64_t now_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now().time_since_epoch()
-            ).count();
-        return now_ms - finale_start >= 4500 + 500;
-    }
-    void mark_started(uint64_t epoch_ms) {
-        if (logo_animation_time_ == 0) {
-            logo_animation_time_ =
-                static_cast<int64_t>(epoch_ms)
-                + static_cast<int64_t>(INTRO_DURATION_MS);
-        }
-    }
-};
 struct ProgressBar {
     std::string id;
     std::string header;
