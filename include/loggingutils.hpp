@@ -1568,7 +1568,7 @@ public:
     TerminalScreen* add_window(
         TerminalPosition pos,
         std::unique_ptr<TerminalScreen>&& screen,
-        std::function<TerminalSize()> sizer
+        [[maybe_unused]] std::function<TerminalSize()> sizer
     ) {
         TerminalScreen* raw = screen.get();
         {
