@@ -1568,7 +1568,7 @@ public:
     TerminalScreen* add_window(
         TerminalPosition pos,
         std::unique_ptr<TerminalScreen>&& screen,
-        [[maybe_unused]] std::function<TerminalSize()> sizer
+        std::function<TerminalSize()> sizer
     ) {
         TerminalScreen* raw = screen.get();
         {
@@ -1590,7 +1590,7 @@ public:
         bar->position().row = 0.0;
         add_window(TerminalPosition(0.0,
             static_cast<double>(top_row)), std::move(screen),
-            [top_row]() -> TerminalSize {
+            []() -> TerminalSize {
                 return TerminalSize(
                     std::max(1, get_terminal_width()), 1);
             });
